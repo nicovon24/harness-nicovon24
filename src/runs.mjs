@@ -3,6 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { resolveConfig } from './config.mjs';
+import { captureSnapshot } from './snapshot.mjs';
 
 const lockRoot = () => path.resolve(process.env.HARNESS_STATE_DIR || path.join(os.homedir(), '.harness-nicovon24'), 'locks');
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -101,4 +102,27 @@ export async function listRuns(project) {
     } catch { result.push({ runId: name, error: 'checkpoint ilegible' }); }
   }
   return result;
+}
+
+export async function recordReview(project, options) {
+  const state = await readOwned(project, options.run, options.token);
+  if (!['pass', 'fail'].includes(options.verdict)) throw new Error('Se requiere --verdict pass|fail');
+  if (!['self', 'independent'].includes(options.reviewer)) throw new Error('Se requiere --reviewer self|independent');
+  if (options.reviewer === 'independent' && !options['review-session']) throw new Error('La revisión independiente requiere --review-session');
+  const snapshot = await captureSnapshot(project, state.feature);
+  state.review = { verdict: options.verdict, reviewer: options.reviewer, reviewerSession: options['review-session'] || null,
+    independence: 'declared-by-caller', snapshot, recordedAt: new Date().toISOString() };
+  await writeFile(runFile(project, options.run), JSON.stringify(state, null, 2) + '\n');
+  return { runId: state.runId, review: state.review };
+}
+
+export async function reviewStatus(project, options) {
+  if (!/^[a-f0-9-]{36}$/.test(options.run || '')) throw new Error('runId inválido');
+  const state = await readJson(runFile(project, options.run));
+  if (!state.review) return { runId: state.runId, status: 'pending' };
+  const current = await captureSnapshot(project, state.feature);
+  const sameCode = current.codeSha256 === state.review.snapshot.codeSha256;
+  const sameAcceptance = current.acceptanceSha256 === state.review.snapshot.acceptanceSha256;
+  return { runId: state.runId, status: sameCode && sameAcceptance && state.review.verdict === 'pass' ? 'current' : 'stale-or-failed',
+    sameCode, sameAcceptance, verdict: state.review.verdict, reviewer: state.review.reviewer, independence: state.review.independence };
 }

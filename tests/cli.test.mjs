@@ -99,3 +99,28 @@ test('execution role override wins over project and routing rule', () => {
   assert.deepEqual(result.config.roles.implementer, { profile: 'astra', effort: 'high' });
   assert.equal(result.sources.roles.implementer, 'execution');
 });
+
+test('review becomes stale when code or acceptance changes', async t => {
+  const { invoke, makeProject } = await fixture(t);
+  const project = await makeProject('review');
+  const git = spawnSync('git', ['init', project], { encoding: 'utf8' });
+  assert.equal(git.status, 0, git.stderr);
+  const featureDir = path.join(project, 'harness/features/change');
+  await mkdir(featureDir, { recursive: true });
+  const acceptance = path.join(featureDir, 'requirements.md');
+  await writeFile(acceptance, '# REQ-001\nReturn true.\n');
+  const code = path.join(project, 'app.js');
+  await writeFile(code, 'export const value = true;\n');
+  const begin = invoke('begin', project, '--feature', 'change');
+  assert.equal(begin.status, 0, begin.stderr);
+  const { runId, token } = begin.json;
+  const record = invoke('review-record', project, '--run', runId, '--token', token, '--verdict', 'pass', '--reviewer', 'independent', '--review-session', 'session-2');
+  assert.equal(record.status, 0, record.stderr);
+  assert.equal(invoke('review-status', project, '--run', runId).json.status, 'current');
+  await writeFile(code, 'export const value = false;\n');
+  assert.equal(invoke('review-status', project, '--run', runId).json.sameCode, false);
+  await writeFile(code, 'export const value = true;\n');
+  await writeFile(acceptance, '# REQ-001\nReturn false.\n');
+  assert.equal(invoke('review-status', project, '--run', runId).json.sameAcceptance, false);
+  assert.equal(invoke('end', project, '--run', runId, '--token', token, '--workers-stopped').status, 0);
+});

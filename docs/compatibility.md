@@ -8,6 +8,7 @@ Estado al 17 de octubre de 2026. `probado` significa ejecución observada; `est�
 | Instalación por proyecto | Probado en fixtures | Dos proyectos temporales, preview, repetición y desinstalación aislada |
 | CLI copiada en el proyecto | Probado en fixture | La copia ejecutó `config` sin ruta al checkout de origen |
 | Bloqueo cooperativo de checkout/feature | Probado en fixture | Segunda ejecución bloqueada; token exigido para checkpoint y cierre |
+| Invalidez de revisión tras cambios | Probado en fixture | `review-status` detectó cambios tanto de código como de aceptación; la identidad independiente solo queda declarada por el invocador |
 | Invocación de skill en Codex CLI | Piloto parcial | `codex exec` con Sol High leyó `h-doctor` y su guía compartida; su política interna bloqueó ejecutar Node desde el agente. La CLI instalada pasó `validate` y `doctor` al ejecutarla directamente. El cliente avisó de límite de contexto de skills; falta comprobar descubrimiento nativo sin invocación explícita. |
 | Cambio automático de modelo y revisión independiente | Pendiente | No se creó un agente real ni se comprobó identidad reportada por runtime |
 | Supermemory | Pendiente | Sin escritura ni recuperación remota verificadas |

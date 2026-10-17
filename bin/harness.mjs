@@ -3,7 +3,7 @@ import path from 'node:path';
 import { access } from 'node:fs/promises';
 import { defaults, initProject, loadManifest, packageInfo, resolveConfig } from '../src/config.mjs';
 import { applyInstallation, installationPlan } from '../src/install.mjs';
-import { beginRun, checkpointRun, endRun, listRuns } from '../src/runs.mjs';
+import { beginRun, checkpointRun, endRun, listRuns, recordReview, reviewStatus } from '../src/runs.mjs';
 
 function parse(argv) {
   const command = argv[0];
@@ -18,7 +18,7 @@ function parse(argv) {
       options[key] = argv[++i];
     }
   }
-  const allowed = ['project', 'runtime', 'apply', 'dry-run', 'classification', 'feature', 'run', 'token', 'phase', 'next', 'workers-stopped', 'role', 'profile', 'effort', 'mode', 'testing'];
+  const allowed = ['project', 'runtime', 'apply', 'dry-run', 'classification', 'feature', 'run', 'token', 'phase', 'next', 'workers-stopped', 'role', 'profile', 'effort', 'mode', 'testing', 'verdict', 'reviewer', 'review-session'];
   for (const key of Object.keys(options)) if (!allowed.includes(key)) throw new Error(`Opción desconocida: --${key}`);
   return { command, options };
 }
@@ -29,7 +29,7 @@ const exists = async file => { try { await access(file); return true; } catch { 
 async function main() {
   const { command, options } = parse(process.argv.slice(2));
   if (command === 'help' || !command) {
-    console.log('Uso: node bin/harness.mjs <init|validate|config|doctor|install|uninstall|begin|checkpoint|end|runs> --project <ruta> [opciones]');
+    console.log('Uso: node bin/harness.mjs <init|validate|config|doctor|install|uninstall|begin|checkpoint|end|runs|review-record|review-status> --project <ruta> [opciones]');
     return;
   }
   if (!options.project) throw new Error('Se requiere --project <ruta>');
@@ -72,6 +72,8 @@ async function main() {
   if (command === 'checkpoint') { print(await checkpointRun(project, options)); return; }
   if (command === 'end') { print(await endRun(project, options)); return; }
   if (command === 'runs') { print(await listRuns(project)); return; }
+  if (command === 'review-record') { print(await recordReview(project, options)); return; }
+  if (command === 'review-status') { print(await reviewStatus(project, options)); return; }
   throw new Error(`Comando desconocido: ${command}`);
 }
 
