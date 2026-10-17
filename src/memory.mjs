@@ -57,6 +57,7 @@ async function durable(project, ref, text = '', kind = '') {
   if (!['change', 'test', 'verified'].includes(kind) || !/^(?:HEAD|[a-f0-9]{7,40})$/i.test(ref)) return false;
   return gitObjectExists(project, ref);
 }
+export async function verifyDurableRef(project, ref, text) { return durable(project, ref, text, 'decision'); }
 async function acquire(project, sessionId, agentId) {
   const dir = path.join(project, 'harness/.local/memory-writer.lock');
   await mkdir(path.dirname(dir), { recursive: true });
@@ -110,11 +111,15 @@ export async function recordMemory(project, manifest, { kind, text, ref, session
     return { recorded: true, day: entry.day, version: await writeAtomic(project, compacted), entries: compacted.entries.length, limits: MEMORY_LIMITS };
   } finally { await release(); }
 }
-function remoteItems(input, projectId) {
+function remoteItems(input, projectId, expectedNamespace) {
   if (!input) return [];
   let values;
   try { const parsed = JSON.parse(input); values = Array.isArray(parsed) ? parsed : parsed.memories || parsed.results || []; } catch { throw new Error('Supermemory stdin requiere JSON: array, memories[] o results[].'); }
-  return values.map(item => ({ source: 'Supermemory', title: String(item.title || item.metadata?.title || 'recuerdo'), text: String(item.content || item.memory || item.text || ''), projectId: item.projectId || item.metadata?.projectId || '' })).filter(item => item.projectId === projectId && item.text.trim());
+  return values.map(item => ({ source: 'Supermemory', title: String(item.title || item.metadata?.title || 'recuerdo'), text: String(item.content || item.memory || item.text || ''),
+    projectId: item.metadata?.projectId || item.projectId || null, namespace: item.namespace || null, id: item.id || null,
+    documentId: item.documentId || item.included?.document?.id || null, ref: item.metadata?.ref || null,
+    conflictingProject: Boolean(item.projectId && item.metadata?.projectId && item.projectId !== item.metadata.projectId) }))
+    .filter(item => !item.conflictingProject && item.projectId === projectId && item.namespace === expectedNamespace && item.id && item.text.trim());
 }
 function entryBlock(entry, current) {
   const currentKnown = current.branch !== '(sin rama)' && current.commit !== '(sin commit)';
@@ -127,8 +132,8 @@ export async function renderMemory(project, manifest, remoteJson = '') {
   const local = cache.entries.filter(item => days.includes(item.day)).sort((a, b) => (priority[b.kind] || 0) - (priority[a.kind] || 0) || b.timestampUtc.localeCompare(a.timestampUtc));
   const ctx = await context(project, manifest);
   const localTexts = new Set(local.map(item => item.text.trim().replace(/\s+/g, ' ').toLocaleLowerCase()));
-  const remote = remoteItems(remoteJson, manifest.projectId).filter(item => !localTexts.has(item.text.trim().replace(/\s+/g, ' ').toLocaleLowerCase()));
-  let lines = ['# Contexto de memoria del harness', 'Proyecto: ' + ctx.projectId, 'Worktree: ' + ctx.worktree, 'Rama: ' + ctx.branch, 'Commit: ' + ctx.commit, 'Zona horaria: ' + timezone, 'Límites globales: 5 días activos; 150 líneas; 8192 bytes UTF-8.', '', '## Cache local'];
+  const remote = remoteItems(remoteJson, manifest.projectId, manifest.memory?.namespace || manifest.projectId).filter(item => !localTexts.has(item.text.trim().replace(/\s+/g, ' ').toLocaleLowerCase()));
+  let lines = ['# Contexto de memoria del harness', 'Proyecto consultado: ' + ctx.projectId, 'Namespace consultado: ' + (manifest.memory?.namespace || ctx.projectId), 'Worktree: ' + ctx.worktree, 'Rama: ' + ctx.branch, 'Commit: ' + ctx.commit, 'Zona horaria: ' + timezone, 'Límites globales: 5 días activos; 150 líneas; 8192 bytes UTF-8.', '', '## Cache local'];
   let omitted = 0;
   for (const e of local) {
     const block = ['### ' + e.day, ...entryBlock(e, ctx)];
@@ -140,7 +145,9 @@ export async function renderMemory(project, manifest, remoteJson = '') {
     if (checkBudget(marker.join('\n') + '\n').valid) {
       lines = marker;
       for (const e of remote) {
-        const next = [...lines, '### Supermemory: ' + e.title, '  Proyecto: ' + e.projectId, '- ' + e.text];
+        const next = [...lines, '### Supermemory: ' + e.title,
+          '  Origen: ' + e.projectId + ' | namespace: ' + (e.namespace || 'desconocido') + ' | ID: ' + (e.id || 'desconocido'),
+          '  Documento: ' + (e.documentId || 'desconocido') + ' | Ref: ' + (e.ref || 'sin referencia'), '- ' + e.text];
         if (checkBudget(next.join('\n') + '\n').valid) lines = next; else omitted++;
       }
     } else omitted += remote.length;

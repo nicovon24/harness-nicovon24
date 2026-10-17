@@ -1,12 +1,12 @@
 {
   "name": "harness-nicovon24",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "private": true,
   "type": "module",
   "engines": { "node": ">=22" },
   "scripts": {
     "test": "node --test",
-    "check": "node --check bin/harness.mjs"
+    "check": "node --check bin/harness.mjs && node --check src/config.mjs && node --check src/install.mjs && node --check src/memory.mjs && node --check src/runs.mjs && node --check src/snapshot.mjs && node --check src/supermemory.mjs && node --check src/usage.mjs"
   },
   "dependencies": {
     "ajv": "8.17.1"

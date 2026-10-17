@@ -41,8 +41,8 @@
         "provider": { "const": "supermemory" },
         "namespace": { "type": "string", "minLength": 1 },
         "legacyNamespaces": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
-        "readOnStart": { "type": "boolean" },
-        "writeOnCheckpoint": { "type": "boolean" },
+        "readOnStart": { "type": "boolean", "description": "Legacy; retained for manifest compatibility. Remote reads require --pilot." },
+        "writeOnCheckpoint": { "type": "boolean", "description": "Legacy; retained for manifest compatibility. Remote writes require --pilot --event." },
         "onUnavailable": { "const": "checkpoint-and-report" }
       }
     },

@@ -8,7 +8,9 @@ import { captureSnapshot, captureCheckpointSnapshot } from './snapshot.mjs';
 const lockRoot = () => path.resolve(process.env.HARNESS_STATE_DIR || path.join(os.homedir(), '.harness-nicovon24'), 'locks');
 const digest = value => createHash('sha256').update(value).digest('hex');
 const runFile = (project, run) => path.join(project, 'harness/.local/runs', run, 'state.json');
+const pendingFile = (project, run) => path.join(project, 'harness/.local/runs', run, 'checkpoint-pending.json');
 const readJson = async file => JSON.parse(await readFile(file, 'utf8'));
+async function maybeJson(file) { try { return await readJson(file); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
 
 async function writeRunState(project, state) {
   const file = runFile(project, state.runId);
@@ -71,7 +73,7 @@ export async function beginRun(project, manifest, feature) {
       await writeFile(path.join(directory, 'owner.json'), JSON.stringify(owner, null, 2) + '\n', { flag: 'wx' });
     }
     const state = { runId, token, projectId: manifest.projectId, checkout, feature, phase: 'started', status: 'active', startedAt: owner.acquiredAt,
-      policy: resolveConfig(manifest), locks, checks: [], codeSnapshot: null, specSnapshot: null, nextStep: null, memorySync: 'none' };
+      policy: resolveConfig(manifest), memoryNamespace: manifest.memory?.namespace || manifest.projectId, locks, checks: [], codeSnapshot: null, specSnapshot: null, nextStep: null, memorySync: 'none' };
     const file = runFile(project, runId);
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, JSON.stringify(state, null, 2) + '\n', { flag: 'wx' });
@@ -85,11 +87,24 @@ export async function beginRun(project, manifest, feature) {
 }
 
 export async function checkpointRun(project, options) {
-  if (!options.phase || !options.next) throw new Error('Se requieren --phase y --next');
+  if (!options.recover && (!options.phase || !options.next)) throw new Error('Se requieren --phase y --next');
+  if (options.recover && (options.phase || options.next || options['check-command'])) throw new Error('--recover no acepta datos de un checkpoint nuevo');
   const hasCheck = options['check-command'] || options['check-result'] || options['check-scope'];
   if (hasCheck && !(options['check-command'] && options['check-result'])) throw new Error('Una comprobación requiere --check-command y --check-result');
   if (options['check-result'] && !['pass', 'fail', 'skipped'].includes(options['check-result'])) throw new Error('--check-result debe ser pass|fail|skipped');
   return withRunWriter(project, options.run, options.token, async state => {
+    const pending = await maybeJson(pendingFile(project, state.runId));
+    if (pending) {
+      if (!options.recover) throw new Error('Checkpoint incompleto; usar checkpoint --recover con el mismo run y token');
+      if (pending.runId !== state.runId || pending.projectId !== state.projectId || pending.previousSeq + 1 !== pending.nextState.checkpointSeq || pending.event.id !== pending.eventId) throw new Error('Journal de checkpoint inválido; conservar evidencia');
+      if ((state.checkpointSeq || 0) !== pending.previousSeq && (state.checkpointSeq || 0) !== pending.nextState.checkpointSeq) throw new Error('Estado divergente; conservar journal y evento');
+      if ((state.checkpointSeq || 0) === pending.nextState.checkpointSeq && JSON.stringify(state) !== JSON.stringify(pending.nextState)) throw new Error('Estado divergente; conservar journal y evento');
+      await writeQueuedEvent(project, pending.event);
+      if ((state.checkpointSeq || 0) === pending.previousSeq) await writeRunState(project, pending.nextState);
+      await unlink(pendingFile(project, state.runId));
+      return checkpointResult(pending.nextState, pending.eventId, 'recovered');
+    }
+    if (options.recover) throw new Error('No hay checkpoint incompleto para recuperar');
     const snapshots = await captureCheckpointSnapshot(project, state.feature);
     state.phase = options.phase;
     state.nextStep = options.next;
@@ -98,30 +113,39 @@ export async function checkpointRun(project, options) {
     state.codeSnapshot = snapshots.codeSnapshot;
     state.specSnapshot = snapshots.specSnapshot;
     if (hasCheck) state.checks.push({ command: options['check-command'], result: options['check-result'], scope: options['check-scope'] || null,
-      source: 'caller-reported', recordedAt: state.updatedAt });
+      source: 'caller-reported', recordedAt: state.updatedAt, codeSnapshot: snapshots.codeSnapshot, specSnapshot: snapshots.specSnapshot });
     const event = { format: 1, projectId: state.projectId, runId: state.runId, feature: state.feature, phase: state.phase,
       nextStep: state.nextStep, codeSnapshot: state.codeSnapshot, specSnapshot: state.specSnapshot, checks: state.checks, createdAt: state.updatedAt };
     const eventId = digest(JSON.stringify({ runId: event.runId, sequence: state.checkpointSeq }));
     state.queuedEvents = [...(state.queuedEvents || []), eventId];
     state.memorySync = 'pending';
-    const queueDir = path.join(project, 'harness/.local/memory-queue');
-    await mkdir(queueDir, { recursive: true });
-    const queueFile = path.join(queueDir, `${eventId}.json`);
-    const content = JSON.stringify({ id: eventId, ...event }, null, 2) + '\n';
-    try { await writeFile(queueFile, content, { flag: 'wx' }); }
-    catch (error) {
-      if (error.code !== 'EEXIST') throw error;
-      if (await readFile(queueFile, 'utf8') !== content) throw new Error(`Evento ${eventId} ya existe con otro contenido; revisar antes de repetir checkpoint`);
-    }
+    const frozen = { id: eventId, ...event, target: { provider: 'supermemory', namespace: state.memoryNamespace || state.projectId, projectId: state.projectId } };
+    await writeFile(pendingFile(project, state.runId), JSON.stringify({ format: 1, runId: state.runId, projectId: state.projectId, previousSeq: state.checkpointSeq - 1, eventId, event: frozen, nextState: state }, null, 2) + '\n', { flag: 'wx' });
+    await writeQueuedEvent(project, frozen);
     await writeRunState(project, state);
-    return { runId: state.runId, phase: state.phase, nextStep: state.nextStep, codeSnapshot: state.codeSnapshot,
-      specSnapshot: state.specSnapshot, checks: state.checks.length, memorySync: state.memorySync, queuedEvent: eventId };
+    await unlink(pendingFile(project, state.runId));
+    return checkpointResult(state, eventId);
   });
+}
+
+async function writeQueuedEvent(project, event) {
+  const directory = path.join(project, 'harness/.local/memory-queue');
+  await mkdir(directory, { recursive: true });
+  const file = path.join(directory, `${event.id}.json`);
+  const content = JSON.stringify(event, null, 2) + '\n';
+  try { await writeFile(file, content, { flag: 'wx' }); }
+  catch (error) { if (error.code !== 'EEXIST') throw error; if (await readFile(file, 'utf8') !== content) throw new Error(`Evento ${event.id} divergente; conservar evidencia`); }
+}
+
+function checkpointResult(state, eventId, recovery = null) {
+  return { runId: state.runId, phase: state.phase, nextStep: state.nextStep, codeSnapshot: state.codeSnapshot,
+    specSnapshot: state.specSnapshot, checks: state.checks.length, memorySync: state.memorySync, queuedEvent: eventId, recovery };
 }
 
 export async function endRun(project, options) {
   if (!options['workers-stopped']) throw new Error('Se requiere --workers-stopped después de comprobar que ningún worker sigue escribiendo');
   return withRunWriter(project, options.run, options.token, async state => {
+    if (await maybeJson(pendingFile(project, state.runId))) throw new Error('Checkpoint incompleto; recuperar antes de cerrar');
     state.status = 'ending';
     await writeRunState(project, state);
     for (const name of state.locks) {
@@ -145,9 +169,12 @@ export async function listRuns(project, { verify = false } = {}) {
     try {
       const state = await readJson(runFile(project, name));
       const item = { runId: state.runId, feature: state.feature, phase: state.phase, status: state.status, nextStep: state.nextStep, updatedAt: state.updatedAt || state.startedAt };
+      item.checkpointRecovery = (await maybeJson(pendingFile(project, name))) ? 'pending' : 'none';
       if (state.queuedEvents?.length) {
         const receipts = await Promise.all(state.queuedEvents.map(async id => {
-          try { const value = await readJson(path.join(project, 'harness/.local/memory-receipts', `${id}.json`)); return value.id === id && value.remoteId === id; }
+          try { const value = await readJson(path.join(project, 'harness/.local/memory-receipts', `${id}.json`));
+            const event = await readJson(path.join(project, 'harness/.local/memory-queue', `${id}.json`));
+            return value.id === id && value.remoteId === id && (!event.target || JSON.stringify(value.target) === JSON.stringify(event.target)); }
           catch { return false; }
         }));
         item.memorySync = receipts.every(Boolean) ? 'confirmed' : 'pending';
@@ -159,6 +186,9 @@ export async function listRuns(project, { verify = false } = {}) {
         item.resumeValidation = code && spec ? 'current' : 'needs-revalidation';
         item.codeMatches = code;
         item.specMatches = spec;
+        item.checks = (state.checks || []).map(check => ({ command: check.command, result: check.result, scope: check.scope, source: check.source || 'caller-reported',
+          status: !check.codeSnapshot || !check.specSnapshot || check.codeSnapshot.status !== 'captured' || check.specSnapshot.status !== 'captured' || current.codeSnapshot.status !== 'captured' || current.specSnapshot.status !== 'captured' ? 'unverified'
+            : check.codeSnapshot.sha256 === current.codeSnapshot.sha256 && check.specSnapshot.sha256 === current.specSnapshot.sha256 ? 'current' : 'stale' }));
       }
       result.push(item);
     } catch { result.push({ runId: name, error: 'checkpoint ilegible' }); }

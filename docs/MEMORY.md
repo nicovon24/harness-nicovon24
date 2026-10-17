@@ -1,48 +1,41 @@
-# Memoria del harness
+# Memoria y reanudación
 
-## Memoria nativa y cache propia
+La continuidad normal es local. `AGENTS.md` fija reglas; `docs/PLAN.md` y documentos de feature conservan decisiones, requisitos y pendientes; `MEMORY.md` resume la actividad para reanudar; `harness/.local/` guarda run, ownership, journal, cola, recibos y métricas; Git conserva versiones y evidencia. Supermemory v5 es un piloto optativo, separado de la fuente de verdad del proyecto. La memoria global entre proyectos está pospuesta.
 
-Claude Code carga sus propios CLAUDE.md según sus reglas; Codex puede usar AGENTS.md. Esas instrucciones no son la cache de trabajo. El harness solo incorpora la cache cuando el flujo llama memory-recall o memory-render; no se importa MEMORY.md desde CLAUDE.md, para evitar duplicados. En este checkout no hay CLAUDE.md, hooks de memoria ni credencial de Supermemory. checkpoint crea eventos locales pendientes en harness/.local/memory-queue/; memory-sync puede transmitirlos mediante la API v5.
+## Cache local
 
-## Política efectiva
+`MEMORY.md` es JSON estructurado, ignorado por Git. `MEMORY.template.md` es su plantilla versionada. Se conservan cinco fechas locales distintas con actividad real, sin vencimiento por pausa y con hasta cinco puntos breves por fecha. Cada punto guarda timestamp UTC, `session_id`, `agent_id`, projectId, worktree, rama, commit y referencia duradera. La zona horaria se toma del manifiesto o de `America/Argentina/Buenos_Aires`.
 
-- Cinco fechas locales distintas como máximo, seleccionadas por actividad sustantiva registrada explícitamente. Una pausa de semanas o meses no elimina días activos.
-- 150 líneas y 8192 bytes UTF-8 como límites simultáneos del contexto completo; se cuentan encabezados, metadata, referencias, títulos, separadores, cache local y resultados remotos.
-- Hasta cinco puntos breves por día; zona configurada por timeZone en harness/project.json, o America/Argentina/Buenos_Aires.
-- Cada punto guarda timestampUtc ISO UTC y la fecha de actividad local. Leer, cargar, abrir sesión, consultar proveedor, resumir y limpiar no agregan actividad.
-- Primero se conserva reanudación, bloqueos, estado verificado, decisiones/pendientes y actividad reciente. Se agregan puntos completos; no se truncan textos. El compositor omite elementos completos de menor prioridad cuando el bloque global no cabe.
-- Referencias de repo/worktree, rama y commit acompañan los puntos. Al reanudar se contrastan con Git y disco.
+El compositor cuenta cache y recuerdos remotos aceptados en **un solo bloque** de 150 líneas y 8192 bytes UTF-8, con títulos y metadata. Omite puntos completos cuando no caben. Leer, renderizar, consultar Supermemory o limpiar la cache no genera actividad. La escritura usa un lock por worktree, lectura fresca y reemplazo atómico. La limpieza y compactación abortan cuando no se puede comprobar la fuente duradera de una entrada retirada.
 
-Los valores son topes fijos en src/memory.mjs y se exponen como defaults en config/defaults.json; no hay overrides que permitan ampliarlos.
+```powershell
+node .agents/harness/bin/harness.mjs memory-render --project .
+node .agents/harness/bin/harness.mjs memory-record --project . --kind progress --text "Resumen que ya consta en docs/PLAN.md" --ref docs/PLAN.md --session-id ID --agent-id coordinator
+node .agents/harness/bin/harness.mjs memory-clear --project .
+```
 
-## Uso
+Al reanudar, cargar una sola vez con `memory-render`, contrastar referencias con Git y disco, y marcar lo no verificable. `memory-recall` sin `--pilot` también entrega solo contexto local. No abrir `MEMORY.md` manualmente ni importarlo desde memoria nativa. Un documento duradero compartido exige ownership del checkout; el lock de la cache no protege `docs/PLAN.md`.
 
-Desde el inicio del proyecto:
+## Checkpoints
 
-    node .agents/harness/bin/harness.mjs memory-recall --project .
+`checkpoint` guarda un journal antes de añadir el evento a la cola y actualizar `state.json`. Una interrupción deja el journal y la evidencia para `checkpoint --recover` con el mismo run/token. La recuperación reutiliza ID, timestamp, snapshot y payload congelados. Un checkpoint nuevo, aunque repita fase y próximo paso, recibe otra identidad. Los eventos inconclusos se muestran como tales en `runs` y `memory-status`, y no se exportan. No recuperar locks por antigüedad ni cerrar un run con journal pendiente.
 
-El comando consulta Supermemory bajo el namespace `memory.namespace` o `projectId` cuando `SUPERMEMORY_API_KEY` está configurada. Si falta o falla la consulta, entrega solo la cache local e informa el estado por stderr. Nunca cargar el resultado remoto por otra vía. Si otro conector ya entrega recuerdos del mismo projectId, usar el compositor local sin duplicar la consulta:
+Cada check nuevo conserva el snapshot de código y aceptación de su registro. `runs --verify` lo marca `current`, `stale` o `unverified`. Un resultado pasado por flags es `caller-reported`; la identidad de un reviewer pasada por flags tampoco prueba independencia.
 
-    Get-Content -Raw recuerdos.json | node .agents/harness/bin/harness.mjs memory-render --project . --supermemory-stdin
+## Piloto Supermemory
 
-Al guardar una actividad relevante, registrar primero el pendiente o decisión completo en su documento duradero, luego usar:
+La mera presencia de `SUPERMEMORY_API_KEY` no genera llamadas. Usar `memory-publish --pilot --text ... --ref ... --session-id ...` para preparar un resumen explícito con fuente que contenga el texto. Luego usar `memory-sync --pilot --event ID` para ese único evento; no se exporta la cola completa. `memory-recall --pilot` busca en el namespace del proyecto y el compositor solo incluye recuerdos con `metadata.projectId` coincidente. Origen ausente, ajeno o contradictorio queda fuera del contexto. Se conservan ID, namespace, proyecto de origen y referencias.
 
-    node .agents/harness/bin/harness.mjs memory-record --project . --kind progress --text "Resumen breve" --ref docs/PLAN.md --session-id ID --agent-id coordinator
+Para `memory-render --supermemory-stdin`, cada recuerdo externo debe traer `id`, `namespace` y `projectId` original (directo o en `metadata`). Si falta uno, se omite del contexto como origen desconocido. Los resultados del adaptador llevan el namespace de la consulta y el ID devuelto por la API; nunca se asigna `projectId` del manifiesto a un resultado sin origen.
 
---ref debe existir; para vaciar la cache, su archivo debe contener el resumen registrado, o debe ser una referencia Git verificable. memory-clear aborta si alguna entrada no tiene fuente duradera comprobable. No se debe editar MEMORY.md manualmente ni reescribirlo desde un snapshot viejo. El comando toma un bloqueo compartido por worktree, vuelve a leer bajo el bloqueo y renombra un temporal atómicamente. Espera escritores concurrentes hasta 10 segundos; un bloqueo abandonado requiere revisión manual, no recuperación automática por antigüedad.
+El destino queda fijo en evento, intento y recibo. Un evento legacy sin destino requiere `--namespace` explícito; un intento anterior incompatible bloquea el cambio. Un POST incierto no se repite ciegamente: se consulta por ID y se reconcilia si el contenido coincide. Los códigos 402 y 429 dejan pendiente el evento; `Retry-After` se respeta. Se usan hasta tres intentos solo para consultas transitorias seguras. La cola, los recibos y las métricas están fuera de Git.
 
-Los checkpoints guardan eventos locales con ID estable. Para transmitirlos explícitamente:
+`memory-status` informa desactivado, pendiente, aceptado, incierto o reconciliado sin red. `memory-processing --pilot --event ID --wait-seconds 300` consulta procesamiento y extracción con un deadline; después busca el recuerdo y solo marca `recoverable` si encuentra su projectId y eventId originales. Si vence el plazo queda pendiente. La API distingue aceptación del documento, `system.status`, `system.dreamingStatus` y resultados de búsqueda. [Documentos](https://supermemory.ai/docs/ingestion/document-operations).
 
-    node .agents/harness/bin/harness.mjs memory-sync --project .
+## Consumo
 
-La API v5 usa un namespace por proyecto. Antes de reenviar, el adaptador consulta el documento por ID; si ya existe y contiene el identificador del evento, guarda un recibo local y evita añadirlo otra vez. Antes del primer POST guarda un intento local. Si el resultado de ese POST es incierto y la consulta posterior no encuentra el documento, bloquea el reenvío automático para evitar duplicados: revisar el evento y el servicio antes de resolverlo manualmente. Si no hay respuesta confirmada o falla el recibo, la cola permanece. No borra eventos ni registra sincronización por una respuesta incierta. Intentos, recibos y cola se guardan bajo `harness/.local/`. La búsqueda y escritura reales con credenciales todavía requieren un piloto: las pruebas actuales usan respuestas HTTP simuladas. Supermemory procesa documentos de manera asíncrona, así que aceptación de escritura no equivale a recuerdo recuperable.
+`memory-usage --days 7 --project-days 30` suma llamadas observadas de los agentes y worktrees accesibles del proyecto; proyecta con tasa diaria constante. Registra timestamps, bytes, errores, reintentos, consultas, escrituras y última operación exitosa, sin claves ni payloads. Las consultas HTTP y los bytes no equivalen a operaciones o SM tokens facturados. La estimación de búsqueda usa la tarifa pública; ingestión y total quedan indeterminados sin contadores oficiales. Otros proyectos/clientes pueden compartir los créditos de la cuenta y no figurar en el registro local. Comparar manualmente con la facturación real del proveedor cuando esté disponible. No crear tareas programadas, no comprar planes ni activar recargas. [Facturación oficial](https://supermemory.ai/docs/overview/billing).
 
-Los documentos duraderos compartidos, como docs/PLAN.md, deben cambiarse con el ownership de checkout/feature establecido por begin; el bloqueo de memoria no protege esos documentos. Los registros se separan por projectId, ruta worktree, session_id y agent_id. No se conservan transcripciones, secretos ni datos privados.
+Para una comparación local, copiar manualmente del panel o de `GET /v3/auth/billing/usage` los valores oficiales a `harness/.local/official-usage.json` con `observedAtUtc`, `periodStartUtc`, `periodEndUtc`, `searchQueries` y `creditsBalanceUsd`; usar `memory-usage --official-file harness/.local/official-usage.json`. El archivo debe contener solo esos números y fechas, no la respuesta completa ni correo o datos de la organización. Esta interfaz oficial exige permisos de administrador o propietario; una clave limitada puede recibir 403. Los períodos y ámbitos distintos se presentan juntos, sin restarlos como si midieran el mismo proyecto.
 
-## Formato y reconstrucción
-
-MEMORY.md es JSON estructurado local, ignorado por Git. MEMORY.template.md es la plantilla pública vacía. Borrar MEMORY.md no debe borrar pendientes/decisiones: esos registros deben permanecer en docs/PLAN.md o fuentes duraderas. La cache puede reconstruirse desde esos documentos y los puntos del historial Git. La limpieza no borra mensajes ya incorporados a una conversación activa.
-
-La escritura exige referencias duraderas para puntos nuevos; al compactar verifica que las entradas retiradas puedan reconstruirse. Si la comprobación falla, no reemplaza la cache. Guardar la entrada en memoria no equivale por sí solo a persistir un pendiente o decisión.
-
-A MEMORY.md previo en prosa no se interpreta ni se borra automaticamente: conservarlo y migrar cada hecho importante con su fuente duradera antes de reemplazarlo. La CLI aborta ante un formato desconocido.
+El piloto remoto real requiere credencial, conectividad y un resumen inocuo con fuente comprobable. La suite automática usa mocks. Una lectura desde otro proceso CLI prueba persistencia local entre procesos; una sesión nueva de agente requiere evidencia separada del runtime.

@@ -1,44 +1,68 @@
 # harness-nicovon24
 
-Arnés personal de desarrollo con especificación proporcional, modelos configurables, revisión y reanudación entre sesiones.
+Arnés local para especificación proporcional, modelos configurables, checks, revisión y reanudación por proyecto. Este hito consolida la continuidad local y deja Supermemory v5 como piloto explícito. La memoria global entre proyectos se pospone. La v0.1 completa todavía requiere comprobar las otras capacidades descritas en [docs/PLAN.md](docs/PLAN.md).
 
-**Estado al 17 de octubre de 2026:** núcleo local `0.1.0-alpha.2` implementado parcialmente. Funcionan la CLI de configuración, la instalación conservadora de recursos Codex, checkpoints verificables y el registro local con bloqueos cooperativos. Un piloto local con la CLI instalada pasó. Todavía faltan pilotos con agentes reales, transferencia automática entre modelos, descubrimiento de skills en Orca/Codex y Supermemory remoto real; no es la v0.1 completa.
+## Fuentes de verdad
 
-## Documentación
+| Lugar | Responsabilidad |
+|---|---|
+| `AGENTS.md` | Reglas breves y obligatorias para trabajar en el proyecto |
+| `docs/PLAN.md` y documentos de feature | Decisiones, requisitos y pendientes duraderos |
+| `MEMORY.md` | Cache local breve para reanudar; ignorada por Git |
+| `harness/.local/` | Runs, ownership, journals, cola, recibos y métricas; ignorados por Git |
+| Git | Versiones y evidencia verificable |
+| Supermemory | Experimento complementario que requiere selección expresa |
 
-- [MEMORY.template.md](MEMORY.template.md): plantilla versionada para cache local; `MEMORY.md` es local y se excluye de Git.
-- [Plan acordado](docs/PLAN.md): decisiones vigentes, secuencia y aceptación del núcleo inicial.
-- [Especificación original](README-BASE.md): requisitos amplios y objetivo de v0.1 completa.
+La cache conserva hasta cinco fechas locales distintas de actividad real, cinco puntos por fecha y ninguna caducidad por pausa. El compositor de cache y recuerdos opcionales tiene un límite conjunto de 150 líneas y 8192 bytes UTF-8, incluidos metadata y títulos. Antes de registrar decisiones o pendientes en cache, guardarlos en su documento duradero. Al retomar, contrastar repo, worktree, rama, commit, aceptación y código con Git y disco. Un recuerdo no reemplaza las instrucciones vigentes.
 
-Las decisiones posteriores registradas en el plan actualizan la especificación original: núcleo local primero, procedimiento `builtin` inicial y transferencia automática entre modelos con opción manual explícita.
+## Instalación y continuidad local
 
-`MEMORY.md` es una cache local con hasta cinco días distintos de actividad real, sin vencimiento por inactividad. El cargador `memory-recall` incorpora en un solo bloque la cache y los resultados de Supermemory cuando hay credencial; limita ese bloque a 150 líneas y 8192 bytes UTF-8. La memoria nativa de Claude (CLAUDE.md) es otro mecanismo; este repositorio no crea una importación de MEMORY.md ni duplica su carga. Pendientes y decisiones duraderas deben vivir en `docs/PLAN.md` o en su documento fuente. El formato, comandos y contrato de persistencia están en `docs/MEMORY.md`.
-
-## Uso local actual
-
-Requiere Node.js 22+. Desde este checkout:
+Requiere Node.js 22+. En Windows/PowerShell, desde un checkout versionado:
 
 ```powershell
 npm ci
 node bin/harness.mjs init --project C:\ruta\a\proyecto
 node bin/harness.mjs validate --project C:\ruta\a\proyecto
-node bin/harness.mjs config --project C:\ruta\a\proyecto
 node bin/harness.mjs install --runtime codex --project C:\ruta\a\proyecto
 node bin/harness.mjs install --runtime codex --project C:\ruta\a\proyecto --apply
 ```
 
-`install` muestra un preview sin escribir. `--apply` copia un snapshot versionado de la CLI, sus dependencias y las siete skills a `.agents/` del proyecto. La copia instalada no depende de la ruta de este checkout. Repetir la misma instalación no duplica archivos; ante un archivo administrado modificado, se detiene y lo conserva. Para desinstalar, usar `uninstall --runtime codex --project <ruta>` y después `--apply`. Una versión instalada permanece fijada hasta ejecutar una actualización explícita desde otro checkout y actualizar `harnessVersion` en el manifiesto.
+`install` muestra preview y `--apply` copia recursos versionados a `.agents/`. La actualización respeta hashes y detiene conflictos con archivos editados por el usuario. `init` añade `/MEMORY.md` al `.gitignore` raíz y excluye `harness/.local/`; no reemplaza reglas existentes. Si `MEMORY.md` ya estaba rastreado, hay que quitarlo del índice conservando la copia local.
 
-`init` crea `harness/.gitignore` con `.local/` para mantener checkpoints y cola fuera de Git, y añade `/MEMORY.md` al `.gitignore` raíz sin borrar reglas existentes. Si una cache ya estaba rastreada por Git, hay que retirarla del índice conservando el archivo local.
+Esta entrega usa `0.1.0-alpha.3`. Los manifiestos `0.1.0-alpha.2` siguen validando, pero una instalación nueva desde este checkout requiere actualizar explícitamente `harnessVersion` del proyecto después de revisar el preview. Los antiguos `memory.readOnStart` y `memory.writeOnCheckpoint` se aceptan por compatibilidad y ya no activan red.
 
-`config` muestra la procedencia de cada elección. Para probar una selección de tarea sin persistirla: `config --project <ruta> --classification complex-implementation`, o `--role implementer --profile sol --effort high`. El resultado indica modelos **solicitados**, no identidad comprobada del runtime. `doctor` informa el estado de archivos y deja las capacidades no probadas como `unverified`.
+Al iniciar o retomar:
 
-El registro local usa `begin --project <ruta> --feature <slug>`, `checkpoint --project <ruta> --run <id> --token <token> --phase <fase> --next <paso>`, `runs --project <ruta> --verify` y `end --project <ruta> --run <id> --token <token> --workers-stopped`. `checkpoint` guarda hashes de código y aceptación, y acepta `--check-command`, `--check-result` y `--check-scope` para comprobaciones ya ejecutadas. `runs` deriva `memorySync` de los recibos locales de todos los eventos del run. `review-record` guarda un veredicto asociado al snapshot de Git y a `requirements.md`; `review-status` lo marca inválido si cambia código o aceptación. El proyecto debe ser la raíz de su repositorio Git para verificar snapshots. La independencia y los resultados de checks siguen declarados por el invocador.
+```powershell
+node .agents/harness/bin/harness.mjs doctor --project .
+node .agents/harness/bin/harness.mjs config --project .
+node .agents/harness/bin/harness.mjs runs --project . --verify
+node .agents/harness/bin/harness.mjs memory-render --project .
+```
 
-Los bloqueos de ejecución se guardan por defecto en el home local bajo `.harness-nicovon24/locks`; los checkpoints y eventos pendientes de memoria en `harness/.local/`, fuera de Git. `memory-sync --project <ruta>` envía la cola a Supermemory v5 cuando existe `SUPERMEMORY_API_KEY`; `memory-recall --project <ruta>` busca recuerdos por namespace y compone la salida dentro del presupuesto global. Si falta la clave o falla la búsqueda, sigue disponible la memoria local. El adaptador pasó pruebas HTTP simuladas, pero falta probar una cuenta real. La escritura de MEMORY.md usa un bloqueo por worktree y escritura atómica; los documentos duraderos compartidos deben editarse dentro de una ejecución que posea el bloqueo de checkout. Otros procesos que ignoren estos comandos no quedan bloqueados.
+Cargar la cache una sola vez mediante el compositor. `memory-recall` sin flags produce el mismo contexto local y comunica que el piloto remoto está desactivado, incluso si hay clave. No abrir `MEMORY.md` ni sumar resultados remotos por otro canal. Guardar actividad real con `memory-record --project . --kind progress --text "Resumen breve" --ref docs/PLAN.md --session-id ID --agent-id coordinator`; el comando comprueba que la fuente contenga el texto. Lecturas y limpiezas no crean actividad.
 
-Las skills instaladas contienen instrucciones para el procedimiento `builtin`; su descubrimiento e invocación real todavía deben probarse en Orca/Codex. No se afirma ejecución automática de modelos, memoria remota verificada ni revisión independiente hasta completar los pilotos del [plan](docs/PLAN.md).
+Los runs usan `begin`, `checkpoint`, `runs --verify`, `review-record`, `review-status` y `end`. `checkpoint` exige run y token; `--check-command`, `--check-result` y `--check-scope` declaran checks ejecutados por el invocador. `runs --verify` informa vigencia del snapshot de cada check. Ante un checkpoint interrumpido, ejecutar `checkpoint --project . --run ID --token TOKEN --recover` tras revisar ownership; conserva el ID y payload originales. No liberar locks mientras algún worker pueda escribir. Un reviewer declarado independiente sigue siendo una declaración hasta comprobar su identidad con el runtime.
 
-Verificación del código: `npm test`, `npm run check` y `npm audit`. El instalador se probó en proyectos temporales; no se instaló en proyectos personales durante esta sesión.
+## Piloto Supermemory
 
-Antecedente de verificación conservado para la migración segura de la cache anterior: El núcleo local 0.1.0-alpha.1 y sus pruebas de configuración, instalación, checkpoints y revisión están implementados; npm test pasó cinco pruebas y npm run check pasó en el chequeo anterior.
+`SUPERMEMORY_API_KEY` solo aporta la credencial; cada operación de red requiere `--pilot`. Los manifiestos existentes siguen siendo válidos; `memory.readOnStart` y `memory.writeOnCheckpoint` anteriores no habilitan automatización remota. Se usa `memory.namespace` o `projectId` como namespace aislado. El destino se fija por evento y recibo. La API del proveedor puede procesar documentos de forma asíncrona: aceptación no significa extracción ni recuerdo recuperable.
+
+```powershell
+node .agents/harness/bin/harness.mjs memory-publish --project . --pilot --text "Resumen inocuo que consta en docs/PLAN.md" --ref docs/PLAN.md --session-id piloto-1 --agent-id coordinator
+node .agents/harness/bin/harness.mjs memory-status --project .
+node .agents/harness/bin/harness.mjs memory-sync --project . --pilot --event ID
+node .agents/harness/bin/harness.mjs memory-processing --project . --pilot --event ID --wait-seconds 300
+node .agents/harness/bin/harness.mjs memory-recall --project . --pilot --query "Resumen inocuo"
+node .agents/harness/bin/harness.mjs memory-usage --project . --days 7 --project-days 30
+```
+
+`memory-publish` prepara un solo evento local, con texto de hasta 2048 bytes y fuente comprobada. `memory-sync` solo envía el ID elegido; no vuelca toda la cola. Para un evento antiguo sin destino fijo se exige `--namespace` y se bloquea cualquier intento o recibo incompatible. Un POST de resultado incierto se reconcilia por ID antes de reenviar; no hay reintento ciego. Ante 402/429 o caída, la continuidad local persiste y el evento permanece pendiente. `memory-status` es local; `memory-processing --pilot` consulta documento y extracción, y comprueba búsqueda recuperable si el proveedor informa ambos como terminados.
+
+`memory-usage` agrega peticiones observadas de agentes y worktrees accesibles del mismo proyecto. Muestra búsquedas, escrituras, consultas de estado, reintentos, errores, bytes enviados y última operación exitosa. Proyecta treinta días con tasa diaria constante. Los SM tokens facturados y el saldo real son desconocidos hasta consultar la cuenta; el saldo puede compartirse con otros clientes y proyectos. Bytes enviados, tokens del contexto y SM tokens facturados son unidades distintas. No se activan rerank, rewrite, extracción instantánea, recargas ni compras. La consulta oficial de facturación requiere permisos de propietario o administrador y se hace manualmente en la cuenta; [facturación](https://supermemory.ai/docs/overview/billing) y [tarifas](https://supermemory.ai/pricing/).
+
+Si se dispone de contadores oficiales, [docs/MEMORY.md](docs/MEMORY.md) explica cómo introducir un resumen numérico bajo `harness/.local/` y compararlo con `memory-usage --official-file`, sin subir datos de la cuenta a Git.
+
+## Evidencia y límites
+
+`npm test` usa fixtures y HTTP simulado, sin credenciales. `npm run check` comprueba sintaxis. La [tabla de compatibilidad](docs/compatibility.md) distingue mocks, procesos CLI, sesiones reales y servicio. La instalación y los locks son locales al host; no hay exclusión entre máquinas. La transferencia automática real de modelos, un reviewer identificado por el runtime y el piloto remoto real siguen pendientes de evidencia antes de declarar v0.1 completa.

@@ -139,12 +139,14 @@ test('review becomes stale when code or acceptance changes', async t => {
   assert.equal(saved.specSnapshot.status, 'captured');
   assert.equal(saved.checks[0].command, 'node --test');
   assert.equal(invoke('runs', project, '--verify').json[0].resumeValidation, 'current');
+  assert.equal(invoke('runs', project, '--verify').json[0].checks[0].status, 'current');
   const record = invoke('review-record', project, '--run', runId, '--token', token, '--verdict', 'pass', '--reviewer', 'independent', '--review-session', 'session-2');
   assert.equal(record.status, 0, record.stderr);
   assert.equal(invoke('review-status', project, '--run', runId).json.status, 'current');
   await writeFile(code, 'export const value = false;\n');
   assert.equal(invoke('review-status', project, '--run', runId).json.sameCode, false);
   assert.equal(invoke('runs', project, '--verify').json[0].resumeValidation, 'needs-revalidation');
+  assert.equal(invoke('runs', project, '--verify').json[0].checks[0].status, 'stale');
   await writeFile(code, 'export const value = true;\n');
   await writeFile(acceptance, '# REQ-001\nReturn false.\n');
   assert.equal(invoke('review-status', project, '--run', runId).json.sameAcceptance, false);
@@ -177,6 +179,40 @@ test('concurrent checkpoints retain both updates and distinct queued events', as
   assert.equal(invoke('end', project, '--run', runId, '--token', token, '--workers-stopped').status, 0);
 });
 
+test('interrupted checkpoint is recovered with frozen identity and is not exported early', async t => {
+  const { invoke, makeProject } = await fixture(t);
+  const project = await makeProject('interrupted');
+  assert.equal(spawnSync('git', ['init', project], { encoding: 'utf8' }).status, 0);
+  const featureDir = path.join(project, 'harness/features/sample');
+  await mkdir(featureDir, { recursive: true });
+  await writeFile(path.join(featureDir, 'requirements.md'), '# REQ-001\nRecover.\n');
+  const begin = invoke('begin', project, '--feature', 'sample');
+  const { runId, token } = begin.json;
+  const stateFile = path.join(project, 'harness/.local/runs', runId, 'state.json');
+  const before = JSON.parse(await readFile(stateFile, 'utf8'));
+  const checkpoint = invoke('checkpoint', project, '--run', runId, '--token', token, '--phase', 'review', '--next', 'recover');
+  assert.equal(checkpoint.status, 0, checkpoint.stderr);
+  const after = JSON.parse(await readFile(stateFile, 'utf8'));
+  const id = checkpoint.json.queuedEvent;
+  const event = JSON.parse(await readFile(path.join(project, 'harness/.local/memory-queue', `${id}.json`), 'utf8'));
+  await writeFile(stateFile, JSON.stringify(before));
+  await writeFile(path.join(project, 'harness/.local/runs', runId, 'checkpoint-pending.json'), JSON.stringify({ format: 1, runId, projectId: 'interrupted', previousSeq: 0, eventId: id, event, nextState: after }));
+  const eventFile = path.join(project, 'harness/.local/memory-queue', `${id}.json`);
+  await writeFile(eventFile, JSON.stringify({ ...event, nextStep: 'divergent' }));
+  assert.notEqual(invoke('checkpoint', project, '--run', runId, '--token', token, '--recover').status, 0);
+  assert.equal((await readFile(path.join(project, 'harness/.local/runs', runId, 'checkpoint-pending.json'), 'utf8')).includes(id), true);
+  await writeFile(eventFile, JSON.stringify(event, null, 2) + '\n');
+  assert.equal(invoke('runs', project).json[0].checkpointRecovery, 'pending');
+  assert.equal(invoke('memory-status', project).json.events[0].status, 'checkpoint-incomplete');
+  assert.notEqual(invoke('checkpoint', project, '--run', runId, '--token', token, '--phase', 'review', '--next', 'recover').status, 0);
+  const recovered = invoke('checkpoint', project, '--run', runId, '--token', token, '--recover');
+  assert.equal(recovered.status, 0, recovered.stderr);
+  assert.equal(recovered.json.queuedEvent, id);
+  assert.equal(JSON.parse(await readFile(stateFile, 'utf8')).checkpointSeq, 1);
+  assert.equal(invoke('checkpoint', project, '--run', runId, '--token', token, '--recover').status !== 0, true);
+  assert.equal(invoke('end', project, '--run', runId, '--token', token, '--workers-stopped').status, 0);
+});
+
 test('installed CLI completes a local solo run and resumes from a fresh process', async t => {
   const { invoke, makeProject, stateDir } = await fixture(t);
   const project = await makeProject('pilot');
@@ -199,7 +235,7 @@ test('installed CLI completes a local solo run and resumes from a fresh process'
   const memory = call('memory-recall');
   assert.equal(memory.status, 0, memory.stderr);
   assert.match(memory.stdout, /Contexto de memoria del harness/);
-  assert.match(memory.stderr, /SUPERMEMORY_API_KEY unset/);
+  assert.match(memory.stderr, /disabled/);
   const { runId, token } = begin.json;
   const actualCheck = spawnSync(process.execPath, [path.join(project, 'app.js')], { encoding: 'utf8' });
   assert.equal(actualCheck.status, 0, actualCheck.stderr);
@@ -220,5 +256,5 @@ test('installed CLI completes a local solo run and resumes from a fresh process'
   assert.equal(resumed.status, 0, resumed.stderr);
   assert.equal(resumed.json.find(item => item.runId === runId).resumeValidation, 'current');
   assert.equal(resumed.json.find(item => item.runId === runId).nextStep, 'review REQ-001');
-  assert.equal(resumed.json.find(item => item.runId === runId).memorySync, 'confirmed');
+  assert.equal(resumed.json.find(item => item.runId === runId).memorySync, 'pending');
 });

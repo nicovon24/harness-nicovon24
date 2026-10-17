@@ -64,7 +64,7 @@ test('global line and UTF-8 byte limits include Unicode remote titles and conten
   const entries = [];
   for (let i = 0; i < 5; i++) entries.push({ day: `2026-10-1${i}`, timestampUtc: '2026-10-17T12:00:00.000Z', kind: 'progress', text: 'avance Unicode ñ 🧪 ' + i, ref: 'docs-plan.md', sessionId: 's', agentId: 'a', projectId: 'memory-test', worktree: project, branch: 'main', commit: 'abc' });
   await writeFile(cacheFile(project), JSON.stringify({ format: 1, entries }));
-  const remote = JSON.stringify({ memories: Array.from({ length: 80 }, (_, i) => ({ projectId: 'memory-test', title: 'Título 🧠 ' + i, content: 'Información remota útil 🧪 '.repeat(15) })) });
+  const remote = JSON.stringify({ memories: Array.from({ length: 80 }, (_, i) => ({ id: `remote-${i}`, namespace: 'memory-test', projectId: 'memory-test', title: 'Título 🧠 ' + i, content: 'Información remota útil 🧪 '.repeat(15) })) });
   const { output, budget } = await renderMemory(project, { projectId: 'memory-test' }, remote);
   assert.equal(budget.valid, true);
   assert.ok(budget.lines <= 150);

@@ -1,20 +1,24 @@
 # Compatibilidad y evidencia
 
-Estado al 17 de octubre de 2026. `probado` significa ejecución observada; `estático` solo archivos o ayuda local inspeccionados.
+Estado al 17 de octubre de 2026. `probado` significa ejecución observada; `estático` solo archivos o ayuda local inspeccionados. La decisión vigente de [docs/PLAN.md](PLAN.md) usa memoria local como continuidad suficiente y Supermemory como piloto explícito. Las evidencias previas se conservan como historial, sin extrapolarlas a una sesión real de agente.
 
 | Capacidad | Estado | Evidencia o límite |
 |---|---|---|
-| CLI Node 24 en Windows | Probado | `npm test` con 19 casos, `npm run check` |
+| CLI Node 24 en Windows | Probado | `npm test` con 24 casos en `0.1.0-alpha.3`, `npm run check` de CLI y módulos |
 | Instalación por proyecto | Probado en fixtures | Dos proyectos temporales, preview, repetición y desinstalación aislada |
 | CLI copiada en el proyecto | Probado en fixture | La copia ejecutó `config` sin ruta al checkout de origen |
 | Bloqueo cooperativo de checkout/feature | Probado en fixture | Segunda ejecución bloqueada; token exigido para checkpoint y cierre |
 | Invalidez de revisión tras cambios | Probado en fixture | `review-status` detectó cambios tanto de código como de aceptación; la identidad independiente solo queda declarada por el invocador |
 | Cache de memoria y durabilidad | Probado en fixtures | Cinco días activos, sin caducidad por pausa, límites de 150 líneas y 8192 bytes UTF-8, dos escritores concurrentes, limpieza solo con referencia durable |
-| Checkpoint y reanudación local | Probado en fixtures | Hashes de código y aceptación, serialización de checkpoints y `runs --verify`; un piloto con CLI instalada completó un run solo y lo leyó desde otro proceso |
+| Checkpoint y reanudación local | Probado en fixtures y piloto temporal | Hashes de código y aceptación, serialización de checkpoints y `runs --verify`; un piloto con CLI instalada completó un run solo y lo leyó desde otro proceso. El segundo run mostró un check `current` con acceso a Git. |
+| Sesión nueva de agente | Probada para lectura y reanudación | Un subagente con contexto independiente leyó el plan, cache una vez, Git y runs del fixture. Identificó tarea terminada y próximo paso. Su sandbox impidió a la CLI invocar Git asíncronamente (`spawn EPERM`), por lo que marcó los checks `unverified`; no hubo revisión independiente de código ni identidad/modelo reportados por runtime. |
 | Piloto en PortafolioNuevo | Probado en copia local del commit `9832e9c` | Instalación `0.1.0-alpha.2` idempotente, `doctor: files-match`, check real, checkpoint capturado, autorrevisión `current`, cierre y reanudación `current`; `MEMORY.md` ignorado y recuperado. El repositorio original conservó su estado previo (`output/` y `tmp/` sin rastrear). |
 | Invocación de skill en Codex CLI | Piloto parcial | `codex exec` con Sol High leyó `h-doctor` y su guía compartida; su política interna bloqueó ejecutar Node desde el agente. La CLI instalada pasó `validate` y `doctor` al ejecutarla directamente. El cliente avisó de límite de contexto de skills; falta comprobar descubrimiento nativo sin invocación explícita. |
 | Cambio automático de modelo y revisión independiente | Pendiente | No se creó un agente real ni se comprobó identidad reportada por runtime |
-| Supermemory v5 | Adaptador probado con HTTP simulado; piloto remoto pendiente | Namespace por proyecto, cola, reconciliación por ID y recuperación bajo presupuesto. No hay `SUPERMEMORY_API_KEY` disponible; sin escritura ni lectura contra el servicio verificadas |
+| Checkpoint interrumpido | Probado en fixture CLI | Journal congelado, estado revertido, recuperación con mismo ID y bloqueo de exportación mientras está inconcluso |
+| Vigencia de checks | Probado en fixture CLI | Cambio de código invalida el check ligado a snapshot; checks legacy sin hashes quedan `unverified` |
+| Supermemory v5 opcional | Probado con HTTP simulado; servicio real pendiente | `--pilot` y `--event` explícitos, selección individual, origen remoto filtrado, destinos fijos, 402/429 y resultado incierto conservado |
+| Métricas del piloto | Probado en fixture | Llamadas reales del mock, bytes, búsquedas/escrituras, estimación de búsqueda; saldo y SM tokens reales pendientes |
 | Claude, Pi, Linux y CI | Pendiente | Sin pruebas en esos entornos |
 
 `codex --version` reportó `codex-cli 0.157.0` en este entorno. Emitió advertencias de acceso denegado al limpiar temporales y crear aliases bajo el CODEX_HOME de Orca; el comando terminó correctamente. Eso no certifica el descubrimiento ni la delegación.

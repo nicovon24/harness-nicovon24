@@ -1,6 +1,6 @@
 # harness-nicovon24
 
-> **Actualización de planificación — 2026-10-17:** esta es la especificación original. El [plan acordado](docs/PLAN.md) registra las decisiones posteriores: núcleo local primero, `builtin` como procedimiento inicial y transferencia automática entre modelos con opción manual explícita. Astra High/Sol High se solicitaron para construir este arnés, sin cambiar los defaults generales. La implementación se difirió a la próxima sesión. Leer [MEMORY.md](MEMORY.md) para retomar; el prompt maestro al final debe interpretarse con ese alcance actualizado.
+> **Especificación histórica:** [docs/PLAN.md](docs/PLAN.md) conserva las decisiones vigentes. Para este hito, la memoria del proyecto basta para reanudar y Supermemory es un piloto explícito; la memoria global remota queda pospuesta. Las secciones inferiores que describen Supermemory como predeterminado o exigen exportar cada checkpoint fueron reemplazadas. Retomar con `node bin/harness.mjs memory-render --project .`, sin abrir `MEMORY.md` directamente. El prompt maestro final es referencia, no una orden automática.
 
 Arnés personal de desarrollo guiado por especificaciones, planificación y orquestación de agentes, adaptable a cada proyecto y portable entre clientes.
 

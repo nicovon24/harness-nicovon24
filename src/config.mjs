@@ -41,6 +41,7 @@ export async function loadManifest(project) {
   if (manifest.memory?.namespace && manifest.memory.namespace !== manifest.projectId && !manifest.memory.legacyNamespaces?.includes(manifest.projectId)) {
     throw new Error('memory.namespace debe coincidir con projectId o declarar la migración en legacyNamespaces');
   }
+  if (manifest.memory?.namespace && !/^[a-zA-Z0-9_:-]{1,100}$/.test(manifest.memory.namespace)) throw new Error('memory.namespace no cumple el formato de Supermemory v5');
   for (const [name, relative] of Object.entries(manifest.references || {})) {
     const full = path.resolve(project, relative);
     if (!full.startsWith(path.resolve(project) + path.sep)) throw new Error(`Referencia fuera del proyecto: ${name}`);
