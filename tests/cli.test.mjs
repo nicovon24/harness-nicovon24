@@ -30,6 +30,7 @@ test('init inherits defaults and config reports routing precedence', async t => 
   const manifestFile = path.join(project, 'harness/project.json');
   const manifest = JSON.parse(await readFile(manifestFile, 'utf8'));
   assert.equal(manifest.roles, undefined);
+  assert.equal(await readFile(path.join(project, 'harness/.gitignore'), 'utf8'), '.local/\n');
   assert.equal(invoke('validate', project).status, 0);
   const base = invoke('config', project).json;
   assert.deepEqual(base.config.roles.implementer, defaults.roles.implementer);
@@ -86,6 +87,9 @@ test('two executions cannot hold one checkout; checkpoints require the owner tok
   assert.equal(checkpoint.status, 0);
   const event = JSON.parse(await readFile(path.join(project, 'harness/.local/memory-queue', `${checkpoint.json.queuedEvent}.json`), 'utf8'));
   assert.equal(event.nextStep, 'check diff');
+  const repeated = invoke('checkpoint', project, '--run', runId, '--token', token, '--phase', 'review', '--next', 'check diff');
+  assert.equal(repeated.status, 0);
+  assert.notEqual(repeated.json.queuedEvent, checkpoint.json.queuedEvent);
   assert.notEqual(invoke('end', project, '--run', runId, '--token', token).status, 0);
   assert.equal(invoke('end', project, '--run', runId, '--token', token, '--workers-stopped').status, 0);
   const second = invoke('begin', project, '--feature', 'sample');

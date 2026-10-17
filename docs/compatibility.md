@@ -18,4 +18,6 @@ Estado al 17 de octubre de 2026. `probado` significa ejecución observada; `est�
 
 Los dos pilotos `codex exec` reportaron `model: gpt-6-sol` y `reasoning effort: high` en el encabezado del runtime. No crearon subagentes ni cambiaron de modelo automáticamente. En el segundo, la política de ejecución rechazó los comandos Node antes de arrancarlos; la comprobación directa posterior de la misma CLI instalada devolvió `valid: true` y `installation: files-match`.
 
+Una revisión posterior en contexto nuevo del código fuente mediante `codex exec` fue rechazada por la revisión automática del entorno: implicaba enviar código y documentación locales a un proveedor externo sin autorización específica para esa exportación. Se continuó con pruebas y revisión local; la revisión independiente del código sigue pendiente.
+
 Referencia de ubicación de skills: [OpenAI, Using skills to accelerate OSS maintenance](https://developers.openai.com/blog/skills-agents-sdk).

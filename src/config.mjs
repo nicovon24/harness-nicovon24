@@ -89,7 +89,14 @@ export async function initProject(project) {
     try { await access(path.join(project, relative)); references[name] = relative; } catch { /* referencia opcional */ }
   }
   const manifest = { schemaVersion: 1, projectId, harnessVersion: packageInfo.version, references };
+  const ignoreFile = path.join(project, 'harness/.gitignore');
+  try {
+    const contents = await readFile(ignoreFile, 'utf8');
+    if (!contents.split(/\r?\n/).includes('.local/')) throw new Error(`${ignoreFile} ya existe pero no ignora .local/; revisalo antes de iniciar`);
+  } catch (error) { if (error.code !== 'ENOENT') throw error; }
   await mkdir(path.dirname(file), { recursive: true });
+  try { await writeFile(ignoreFile, '.local/\n', { flag: 'wx' }); }
+  catch (error) { if (error.code !== 'EEXIST') throw error; }
   await writeFile(file, JSON.stringify(manifest, null, 2) + '\n', { flag: 'wx' });
   return file;
 }

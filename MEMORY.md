@@ -6,16 +6,16 @@
 
 El usuario pidió comenzar la implementación tras el handoff documental. Este checkout tiene ahora un núcleo local `0.1.0-alpha.1`: CLI Node, esquema JSON validado con Ajv, defaults y reglas de routing, instalación conservadora por proyecto, siete skills con procedimiento `builtin` compartido y registro de ejecuciones con bloqueos cooperativos. El estado real y los comandos están en [README.md](README.md). El [plan acordado](docs/PLAN.md) sigue definiendo el alcance pendiente.
 
-No se instaló el arnés en proyectos personales, no se hizo push ni publicación. Se instaló y ejecutó en `.tmp/pilot`, excluido de Git. Codex CLI invocó explícitamente `h-doctor` y leyó sus archivos; avisó que el presupuesto de contexto omitió descripciones de skills y su política interna bloqueó ejecutar Node, por lo que el descubrimiento nativo completo sigue sin certificarse. La misma CLI instalada pasó `validate` y `doctor` al ejecutarla directamente. No se ejecutó el piloto entre modelos ni revisión independiente con agentes. Supermemory tampoco se escribió o recuperó. Los modelos que muestra `config` son **solicitados** según el mapa fijado; los dos pilotos de `codex exec` reportaron `gpt-6-sol` con esfuerzo `high` en el encabezado del runtime.
+No se instaló el arnés en proyectos personales, no se hizo push ni publicación. Se instaló y ejecutó en `.tmp/pilot`, excluido de Git. Codex CLI invocó explícitamente `h-doctor` y leyó sus archivos; avisó que el presupuesto de contexto omitió descripciones de skills y su política interna bloqueó ejecutar Node, por lo que el descubrimiento nativo completo sigue sin certificarse. La misma CLI instalada pasó `validate` y `doctor` al ejecutarla directamente. No se ejecutó el piloto entre modelos ni revisión independiente con agentes. Un intento posterior de revisión independiente del código con `codex exec` fue rechazado por la revisión automática del entorno porque enviaría código y documentación a un proveedor externo sin autorización específica. Supermemory tampoco se escribió o recuperó. Los modelos que muestra `config` son **solicitados** según el mapa fijado; los dos pilotos de `codex exec` reportaron `gpt-6-sol` con esfuerzo `high` en el encabezado del runtime.
 
 ## Evidencia de esta sesión
 
 - Node `v24.15.0`; Codex CLI `0.157.0`. `codex --version` terminó con advertencias de acceso denegado en temporales/aliases de CODEX_HOME administrado por Orca.
 - `npm install --ignore-scripts` instaló Ajv y dependencias; `npm audit --json` reportó cero vulnerabilidades al comprobarlo.
-- `npm test` pasó cinco pruebas tras añadir el snapshot de revisión: configuración y overrides, instalación en dos proyectos, CLI copiada, conservación de cambios, bloqueo cooperativo, evento durable de checkpoint e invalidación por cambios de código o aceptación.
+- `npm test` pasó cinco pruebas tras el cierre local: configuración y overrides, instalación en dos proyectos, CLI copiada, conservación de cambios, bloqueo cooperativo, eventos durables de checkpoint e invalidación por cambios de código o aceptación.
 - `npm run check` pasó tras la última edición. `npm audit --json` reportó cero vulnerabilidades.
 - La ubicación `.agents/skills/` se contrastó con [documentación oficial de OpenAI](https://developers.openai.com/blog/skills-agents-sdk). Un primer piloto Codex leyó siete skills en disco; un segundo invocó `h-doctor` y leyó su guía. El runtime anidado bloqueó los comandos Node; al ejecutarlos directamente, `validate` devolvió `valid: true` y `doctor` `installation: files-match`.
-- Commit local inicial `02aa315` (`feat: add local harness core and Codex project installer`). No hubo push.
+- Commits locales `02aa315` (núcleo e instalador), `58ec7f7` (handoff) y `d1a08a7` (invalidez de revisión). No hubo push.
 
 ## Decisiones vigentes
 

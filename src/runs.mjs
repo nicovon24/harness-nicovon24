@@ -62,9 +62,10 @@ export async function checkpointRun(project, options) {
   state.phase = options.phase;
   state.nextStep = options.next;
   state.updatedAt = new Date().toISOString();
+  state.checkpointSeq = (state.checkpointSeq || 0) + 1;
   const event = { format: 1, projectId: state.projectId, runId: state.runId, feature: state.feature, phase: state.phase,
     nextStep: state.nextStep, codeSnapshot: state.codeSnapshot, specSnapshot: state.specSnapshot, createdAt: state.updatedAt };
-  const eventId = digest(JSON.stringify({ runId: event.runId, phase: event.phase, nextStep: event.nextStep }));
+  const eventId = digest(JSON.stringify({ runId: event.runId, sequence: state.checkpointSeq }));
   const queueDir = path.join(project, 'harness/.local/memory-queue');
   await mkdir(queueDir, { recursive: true });
   try { await writeFile(path.join(queueDir, `${eventId}.json`), JSON.stringify({ id: eventId, ...event }, null, 2) + '\n', { flag: 'wx' }); }
