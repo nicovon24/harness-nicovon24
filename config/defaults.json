@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "execution": {
+    "mode": "auto",
+    "maxSubagents": 2,
+    "maxCorrectionRounds": 2,
+    "maxDelegations": 8,
+    "agentTimeoutMinutes": 20,
+    "runTimeoutMinutes": 60
+  },
+  "testing": { "strategy": "standard" },
+  "spec": { "policy": "proportional" },
+  "review": { "independence": "risk-based" },
+  "workflows": { "provider": "builtin" },
+  "roles": {
+    "coordinator": { "profile": "astra", "effort": "medium" },
+    "researcher": { "profile": "luna", "effort": "high" },
+    "implementer": { "profile": "sol", "effort": "medium" },
+    "reviewer": { "profile": "sol", "effort": "high" }
+  },
+  "modelRouting": {
+    "policy": "defaults-with-overrides",
+    "allowImplicitFallback": false,
+    "rules": [
+      { "id": "simple-inventory", "classification": "simple-inventory", "role": "researcher", "profile": "luna", "effort": "medium" },
+      { "id": "complex-implementation", "classification": "complex-implementation", "role": "implementer", "profile": "sol", "effort": "high" },
+      { "id": "ambiguous-architecture", "classification": "ambiguous-architecture", "role": "coordinator", "profile": "astra", "effort": "high" }
+    ]
+  },
+  "coordination": {
+    "writerPolicy": "exclusive",
+    "scope": "local-host",
+    "onConflict": "block",
+    "recursiveDelegation": false
+  }
+}

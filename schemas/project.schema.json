@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "harness-nicovon24 project manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "projectId", "harnessVersion"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "projectId": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,62}$" },
+    "harnessVersion": { "type": "string", "minLength": 1 },
+    "execution": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "mode": { "enum": ["solo", "auto", "team"] },
+        "maxSubagents": { "type": "integer", "minimum": 0, "maximum": 2 },
+        "maxCorrectionRounds": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "maxDelegations": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "agentTimeoutMinutes": { "type": "integer", "minimum": 1, "maximum": 1440 },
+        "runTimeoutMinutes": { "type": "integer", "minimum": 1, "maximum": 10080 }
+      }
+    },
+    "testing": { "type": "object", "additionalProperties": false, "properties": { "strategy": { "enum": ["standard", "tdd"] } } },
+    "spec": { "type": "object", "additionalProperties": false, "properties": { "policy": { "const": "proportional" } } },
+    "review": { "type": "object", "additionalProperties": false, "properties": { "independence": { "enum": ["risk-based", "always"] } } },
+    "workflows": { "type": "object", "additionalProperties": false, "properties": { "provider": { "const": "builtin" } } },
+    "roles": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "coordinator": { "$ref": "#/definitions/role" },
+        "researcher": { "$ref": "#/definitions/role" },
+        "implementer": { "$ref": "#/definitions/role" },
+        "reviewer": { "$ref": "#/definitions/role" }
+      }
+    },
+    "modelRouting": { "type": "object", "additionalProperties": false, "properties": { "policy": { "const": "defaults-with-overrides" }, "allowImplicitFallback": { "const": false } } },
+    "coordination": { "type": "object", "additionalProperties": false, "properties": { "writerPolicy": { "const": "exclusive" }, "scope": { "const": "local-host" }, "onConflict": { "const": "block" }, "recursiveDelegation": { "const": false } } },
+    "memory": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "provider": { "const": "supermemory" },
+        "namespace": { "type": "string", "minLength": 1 },
+        "legacyNamespaces": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "readOnStart": { "type": "boolean" },
+        "writeOnCheckpoint": { "type": "boolean" },
+        "onUnavailable": { "const": "checkpoint-and-report" }
+      }
+    },
+    "references": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "instructions": { "$ref": "#/definitions/relativePath" },
+        "roadmap": { "$ref": "#/definitions/relativePath" },
+        "commands": { "$ref": "#/definitions/relativePath" }
+      }
+    }
+  },
+  "definitions": {
+    "relativePath": { "type": "string", "minLength": 1, "pattern": "^(?![/\\\\])(?![A-Za-z]:)(?!.*(?:^|[/\\\\])\\.\\.(?:[/\\\\]|$)).+$" },
+    "role": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile", "effort"],
+      "properties": {
+        "profile": { "enum": ["astra", "sol", "luna"] },
+        "effort": { "enum": ["low", "medium", "high", "xhigh", "max"] }
+      }
+    }
+  }
+}

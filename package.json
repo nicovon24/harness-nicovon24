@@ -1,0 +1,14 @@
+{
+  "name": "harness-nicovon24",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check bin/harness.mjs"
+  },
+  "dependencies": {
+    "ajv": "8.17.1"
+  }
+}
