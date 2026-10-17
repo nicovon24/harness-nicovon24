@@ -1,8 +1,8 @@
 # Plan acordado del núcleo inicial
 
-Fecha: 2026-10-17. Acordado en conversación; implementación diferida por el usuario a una próxima sesión. El estado de reanudación se mantiene en [MEMORY.md](../MEMORY.md).
+Fecha: 2026-10-17. Acordado en conversación y en implementación. El estado de reanudación se mantiene en la cache local `MEMORY.md`; decisiones y pendientes duraderos viven en este plan.
 
-Este plan actualiza la [especificación original](../README-harness-nicovon24.md) en los puntos decididos posteriormente. Sus requisitos restantes siguen vigentes. El prompt maestro original debe interpretarse con este alcance escalonado.
+Este plan actualiza la [especificación original](../README-BASE.md) en los puntos decididos posteriormente. Sus requisitos restantes siguen vigentes. El prompt maestro original debe interpretarse con este alcance escalonado.
 
 ## 1. Resultado y decisiones cerradas
 
@@ -100,3 +100,36 @@ Después completar:
 3. v0.1 completa: requisitos originales de memoria, instalación, modelos, exclusión de escritores y recorrido completo, con evidencia.
 
 Claude, Pi, ejecución no interactiva y coordinación entre máquinas quedan para etapas posteriores. El núcleo inicial no se presentará como v0.1 completa mientras falten sus integraciones obligatorias.
+
+## 6. Gestión de memoria acordada e implementada
+
+- Cache local ignorada por Git: hasta cinco fechas distintas con actividad real, sin vencimiento por inactividad; fechas agrupadas por `timeZone` del manifiesto o `America/Argentina/Buenos_Aires`.
+- Timestamp de cada punto en UTC. Lectura, apertura de sesión, consulta remota, resumen y limpieza no crean actividad.
+- Contexto total compuesto por cache local y resultados remotos: máximo 150 líneas y 8192 bytes UTF-8 simultáneamente, incluidos títulos, metadata y separadores; máximo cinco puntos breves por fecha.
+- El cargador CLI aplica prioridad por reanudación, bloqueos, decisiones, estado verificado y actividad reciente. No corta puntos a mitad; omite puntos enteros que no caben.
+- Escritura local con lock por worktree, lectura fresca bajo lock y rename atómico; cada punto incluye projectId, worktree, rama, commit, session_id, agent_id y referencia duradera. No se compacta ni limpia si falla la comprobación de persistencia.
+- `docs/MEMORY.md` documenta comandos y limitaciones. La cache local no es memoria nativa de Claude. Hay un adaptador Supermemory v5 con cola y recuperación por namespace, probado con respuestas simuladas; escritura y lectura remotas reales permanecen pendientes de credencial y piloto.
+- Los documentos duraderos compartidos usan el ownership del checkout/run; el lock de MEMORY no coordina escrituras a `docs/PLAN.md`.
+- Implementación verificada: pruebas de memoria cubren retoma tras un mes, lectura sin actividad, desplazamiento del sexto día, límites globales con Unicode/remoto, escrituras concurrentes y limpieza con pendientes duraderos.
+
+## 7. Revisión de preparación — 2026-10-17
+
+El núcleo local `0.1.0-alpha.2` permite un recorrido solo desde la CLI instalada en un proyecto temporal. Todavía no satisface los criterios de v0.1 completa ni demuestra orquestación automática con agentes reales.
+
+- Hecho: `init` añade `/MEMORY.md` al `.gitignore` raíz del proyecto consumidor sin reemplazar reglas existentes; `harness/.local/` ya estaba excluido. Un MEMORY.md previamente rastreado debe retirarse del índice conservando su copia local.
+- Hecho: memoria comprueba que el texto exista en su documento duradero, reconoce commits por el código de salida de Git y compacta por identidad de entrada. Las pruebas cubren errores de persistencia y timestamps legacy repetidos.
+- Hecho: checkpoint guarda hashes de código y aceptación, comprobaciones declaradas por el invocador y eventos de cola. Las escrituras del mismo run se serializan; `runs --verify` marca `needs-revalidation` si el snapshot ya no coincide.
+- Hecho: el adaptador Supermemory v5 utiliza namespace por proyecto, ID estable por evento, recibos locales y reconciliación antes de reintentar. La recuperación pasa por el presupuesto global. Solo se verificó con respuestas HTTP simuladas: no hay `SUPERMEMORY_API_KEY` en este entorno.
+- Hecho: un fixture ejecutó desde la CLI instalada `begin`, una comprobación real, `checkpoint`, `runs --verify`, `review-record` con autorrevisión, `review-status`, `end` y nueva lectura del run desde otro proceso.
+- Piloto adicional en un repo existente: copia aislada del commit `9832e9c` de PortafolioNuevo, sin tocar su árbol original. `init`, `validate`, instalación `0.1.0-alpha.2`, repetición sin cambios, `doctor: files-match`, bloqueo, `node --check postcss.config.mjs`, checkpoint con código/aceptación capturados, `runs --verify: current`, autorrevisión vigente, cierre y reanudación desde otro proceso: `current`. Un recuerdo local se registró y recuperó; `MEMORY.md` y `.local/` quedaron ignorados. Supermemory remoto, descubrimiento de skills y modelos reales no participaron.
+- Pendiente para v0.1: piloto remoto real de Supermemory (escritura, procesamiento, recuperación y caída), descubrimiento de skills en Orca/Codex, transferencia real entre modelos, reviewer independiente identificado por el runtime y reanudación en una nueva sesión de agente. Un proceso nuevo de CLI no demuestra por sí solo una sesión nueva de agente.
+- Límite conocido: los checks y la independencia del reviewer siguen declarados por el invocador; no hay verificación automática de identidad o del comando ejecutado. Los bloqueos son cooperativos y locales al host. Recuperar un bloqueo abandonado o un cierre parcial requiere revisión manual.
+- Límite observado en el piloto: el sandbox negó a Node ejecutar Git (`spawn EPERM`), por lo que el primer checkpoint quedó `unverified` y la revisión no pudo registrarse. Al repetir en la misma copia con permiso de ejecución local, los snapshots y la revisión funcionaron. La copia no tiene commit propio porque se creó desde un archivo Git del commit de origen sin hacer un commit nuevo; la cache señala correctamente que no puede confirmar su commit.
+
+Próximo paso: probar Supermemory v5 con una credencial del proyecto y un recuerdo de prueba no sensible; después ejecutar el piloto de agentes con transferencia y revisión independientes reales, registrando la identidad reportada por el runtime.
+
+Antecedentes de handoff conservados como registro duradero (superados por el estado anterior):
+
+- Próximo paso: corregir exclusión de cache en proyectos consumidores y garantías de persistencia; luego completar checkpoints verificables y piloto real de extremo a extremo.
+- Próximo paso: validar el comportamiento instalado desde otra sesión y retomar los pilotos faltantes según docs/PLAN.md; confirmar el estado actual con Git antes de actuar.
+- Siguen pendientes pilotos reales de transferencia y revisión independiente, recuperación en otra sesión, e integración efectiva de Supermemory y Superpowers; no declarar completa la v0.1.

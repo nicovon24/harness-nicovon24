@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, writeFile, rm, access } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { defaults, resolveConfig } from '../src/config.mjs';
 
@@ -21,7 +21,7 @@ async function fixture(t) {
     return { ...result, json: result.status === 0 ? JSON.parse(result.stdout) : null };
   };
   const makeProject = async name => { const project = path.join(base, name); await mkdir(project); assert.equal(invoke('init', project).status, 0); return project; };
-  return { base, invoke, makeProject };
+  return { base, stateDir, invoke, makeProject };
 }
 
 test('init inherits defaults and config reports routing precedence', async t => {
@@ -31,6 +31,7 @@ test('init inherits defaults and config reports routing precedence', async t => 
   const manifest = JSON.parse(await readFile(manifestFile, 'utf8'));
   assert.equal(manifest.roles, undefined);
   assert.equal(await readFile(path.join(project, 'harness/.gitignore'), 'utf8'), '.local/\n');
+  assert.equal(await readFile(path.join(project, '.gitignore'), 'utf8'), '/MEMORY.md\n');
   assert.equal(invoke('validate', project).status, 0);
   const base = invoke('config', project).json;
   assert.deepEqual(base.config.roles.implementer, defaults.roles.implementer);
@@ -51,6 +52,15 @@ test('init inherits defaults and config reports routing precedence', async t => 
   assert.notEqual(invoke('validate', project).status, 0);
 });
 
+test('init preserves existing root ignore rules while excluding only root memory', async t => {
+  const { base, invoke } = await fixture(t);
+  const project = path.join(base, 'existing-ignore');
+  await mkdir(project);
+  await writeFile(path.join(project, '.gitignore'), 'dist/\n');
+  assert.equal(invoke('init', project).status, 0);
+  assert.equal(await readFile(path.join(project, '.gitignore'), 'utf8'), 'dist/\n/MEMORY.md\n');
+});
+
 test('installation preview, isolation, idempotence and modified-file protection', async t => {
   const { invoke, makeProject } = await fixture(t);
   const a = await makeProject('alpha');
@@ -66,6 +76,9 @@ test('installation preview, isolation, idempotence and modified-file protection'
   const installedDoctor = spawnSync(process.execPath, [path.join(a, '.agents/harness/bin/harness.mjs'), 'doctor', '--project', a], { encoding: 'utf8' });
   assert.equal(installedDoctor.status, 0, installedDoctor.stderr);
   assert.equal(JSON.parse(installedDoctor.stdout).installation, 'files-match');
+  const installedMemory = spawnSync(process.execPath, [path.join(a, '.agents/harness/bin/harness.mjs'), 'memory-render', '--project', a], { encoding: 'utf8' });
+  assert.equal(installedMemory.status, 0, installedMemory.stderr);
+  assert.match(installedMemory.stdout, /Contexto de memoria del harness/);
   assert.equal(invoke('install', a, '--runtime', 'codex', '--apply').json.count, 0);
   assert.equal(invoke('uninstall', a, '--runtime', 'codex', '--apply').status, 0);
   assert.equal(await absent(skill(a)), true);
@@ -98,7 +111,7 @@ test('two executions cannot hold one checkout; checkpoints require the owner tok
 });
 
 test('execution role override wins over project and routing rule', () => {
-  const manifest = { schemaVersion: 1, projectId: 'example', harnessVersion: '0.1.0-alpha.1', roles: { implementer: { profile: 'sol', effort: 'low' } } };
+  const manifest = { schemaVersion: 1, projectId: 'example', harnessVersion: '0.1.0-alpha.2', roles: { implementer: { profile: 'sol', effort: 'low' } } };
   const result = resolveConfig(manifest, { classification: 'complex-implementation', execution: { roles: { implementer: { profile: 'astra', effort: 'high' } } } });
   assert.deepEqual(result.config.roles.implementer, { profile: 'astra', effort: 'high' });
   assert.equal(result.sources.roles.implementer, 'execution');
@@ -118,13 +131,94 @@ test('review becomes stale when code or acceptance changes', async t => {
   const begin = invoke('begin', project, '--feature', 'change');
   assert.equal(begin.status, 0, begin.stderr);
   const { runId, token } = begin.json;
+  const checkpoint = invoke('checkpoint', project, '--run', runId, '--token', token, '--phase', 'verification', '--next', 'review change',
+    '--check-command', 'node --test', '--check-result', 'pass', '--check-scope', 'REQ-001');
+  assert.equal(checkpoint.status, 0, checkpoint.stderr);
+  const saved = JSON.parse(await readFile(path.join(project, 'harness/.local/runs', runId, 'state.json'), 'utf8'));
+  assert.equal(saved.codeSnapshot.status, 'captured');
+  assert.equal(saved.specSnapshot.status, 'captured');
+  assert.equal(saved.checks[0].command, 'node --test');
+  assert.equal(invoke('runs', project, '--verify').json[0].resumeValidation, 'current');
   const record = invoke('review-record', project, '--run', runId, '--token', token, '--verdict', 'pass', '--reviewer', 'independent', '--review-session', 'session-2');
   assert.equal(record.status, 0, record.stderr);
   assert.equal(invoke('review-status', project, '--run', runId).json.status, 'current');
   await writeFile(code, 'export const value = false;\n');
   assert.equal(invoke('review-status', project, '--run', runId).json.sameCode, false);
+  assert.equal(invoke('runs', project, '--verify').json[0].resumeValidation, 'needs-revalidation');
   await writeFile(code, 'export const value = true;\n');
   await writeFile(acceptance, '# REQ-001\nReturn false.\n');
   assert.equal(invoke('review-status', project, '--run', runId).json.sameAcceptance, false);
   assert.equal(invoke('end', project, '--run', runId, '--token', token, '--workers-stopped').status, 0);
+});
+
+test('concurrent checkpoints retain both updates and distinct queued events', async t => {
+  const { invoke, makeProject, stateDir } = await fixture(t);
+  const project = await makeProject('parallel-checkpoint');
+  assert.equal(spawnSync('git', ['init', project], { encoding: 'utf8' }).status, 0);
+  const featureDir = path.join(project, 'harness/features/sample');
+  await mkdir(featureDir, { recursive: true });
+  await writeFile(path.join(featureDir, 'requirements.md'), '# REQ-001\nConcurrent checkpoint.\n');
+  const begin = invoke('begin', project, '--feature', 'sample');
+  assert.equal(begin.status, 0, begin.stderr);
+  const { runId, token } = begin.json;
+  const checkpoint = next => new Promise(resolve => {
+    const child = spawn(process.execPath, [cli, 'checkpoint', '--project', project, '--run', runId, '--token', token, '--phase', 'verification', '--next', next],
+      { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, HARNESS_STATE_DIR: stateDir } });
+    let output = '', error = '';
+    child.stdout.on('data', chunk => output += chunk); child.stderr.on('data', chunk => error += chunk);
+    child.on('close', status => resolve({ status, output, error }));
+  });
+  const results = await Promise.all([checkpoint('first result'), checkpoint('second result')]);
+  assert.deepEqual(results.map(item => item.status), [0, 0], results.map(item => item.error).join('\n'));
+  const queued = results.map(item => JSON.parse(item.output).queuedEvent);
+  assert.notEqual(queued[0], queued[1]);
+  const state = JSON.parse(await readFile(path.join(project, 'harness/.local/runs', runId, 'state.json'), 'utf8'));
+  assert.equal(state.checkpointSeq, 2);
+  assert.equal(invoke('end', project, '--run', runId, '--token', token, '--workers-stopped').status, 0);
+});
+
+test('installed CLI completes a local solo run and resumes from a fresh process', async t => {
+  const { invoke, makeProject, stateDir } = await fixture(t);
+  const project = await makeProject('pilot');
+  assert.equal(spawnSync('git', ['init', project], { encoding: 'utf8' }).status, 0);
+  assert.equal(invoke('install', project, '--runtime', 'codex', '--apply').status, 0);
+  const installed = path.join(project, '.agents/harness/bin/harness.mjs');
+  const call = (...args) => {
+    const result = spawnSync(process.execPath, [installed, ...args, '--project', project],
+      { encoding: 'utf8', env: { ...process.env, HARNESS_STATE_DIR: stateDir, SUPERMEMORY_API_KEY: '' } });
+    let json = null;
+    if (result.status === 0 && args[0] !== 'memory-recall') json = JSON.parse(result.stdout);
+    return { ...result, json };
+  };
+  const requirements = path.join(project, 'harness/features/pilot/requirements.md');
+  await mkdir(path.dirname(requirements), { recursive: true });
+  await writeFile(requirements, '# REQ-001\nPrint ready.\n');
+  await writeFile(path.join(project, 'app.js'), 'console.log("ready");\n');
+  const begin = call('begin', '--feature', 'pilot');
+  assert.equal(begin.status, 0, begin.stderr);
+  const memory = call('memory-recall');
+  assert.equal(memory.status, 0, memory.stderr);
+  assert.match(memory.stdout, /Contexto de memoria del harness/);
+  assert.match(memory.stderr, /SUPERMEMORY_API_KEY unset/);
+  const { runId, token } = begin.json;
+  const actualCheck = spawnSync(process.execPath, [path.join(project, 'app.js')], { encoding: 'utf8' });
+  assert.equal(actualCheck.status, 0, actualCheck.stderr);
+  assert.equal(actualCheck.stdout.trim(), 'ready');
+  const checkpoint = call('checkpoint', '--run', runId, '--token', token, '--phase', 'verification', '--next', 'review REQ-001',
+    '--check-command', 'node app.js', '--check-result', 'pass', '--check-scope', 'REQ-001');
+  assert.equal(checkpoint.status, 0, checkpoint.stderr);
+  assert.equal(call('runs', '--verify').json.find(item => item.runId === runId).resumeValidation, 'current');
+  assert.equal(call('runs').json.find(item => item.runId === runId).memorySync, 'pending');
+  const review = call('review-record', '--run', runId, '--token', token, '--verdict', 'pass', '--reviewer', 'self');
+  assert.equal(review.status, 0, review.stderr);
+  assert.equal(call('review-status', '--run', runId).json.status, 'current');
+  assert.equal(call('end', '--run', runId, '--token', token, '--workers-stopped').json.status, 'ended');
+  const receiptDir = path.join(project, 'harness/.local/memory-receipts');
+  await mkdir(receiptDir, { recursive: true });
+  await writeFile(path.join(receiptDir, `${checkpoint.json.queuedEvent}.json`), JSON.stringify({ id: checkpoint.json.queuedEvent, remoteId: checkpoint.json.queuedEvent }));
+  const resumed = call('runs', '--verify');
+  assert.equal(resumed.status, 0, resumed.stderr);
+  assert.equal(resumed.json.find(item => item.runId === runId).resumeValidation, 'current');
+  assert.equal(resumed.json.find(item => item.runId === runId).nextStep, 'review REQ-001');
+  assert.equal(resumed.json.find(item => item.runId === runId).memorySync, 'confirmed');
 });

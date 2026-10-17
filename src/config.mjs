@@ -1,5 +1,6 @@
-import { readFile, access, mkdir, writeFile } from 'node:fs/promises';
+import { readFile, access, mkdir, writeFile, rename, lstat, rm } from 'node:fs/promises';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import Ajv from 'ajv';
 
@@ -13,6 +14,21 @@ const validateSchema = new Ajv({ allErrors: true }).compile(schema);
 
 export function manifestPath(project) { return path.join(project, 'harness/project.json'); }
 
+async function ensureMemoryIgnored(project) {
+  const file = path.join(project, '.gitignore');
+  let contents = '';
+  try {
+    if ((await lstat(file)).isSymbolicLink()) throw new Error(`${file} es un enlace simbólico; revisalo antes de iniciar`);
+    contents = await readFile(file, 'utf8');
+  } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (contents.split(/\r?\n/).some(line => ['/MEMORY.md', 'MEMORY.md'].includes(line.trim()))) return;
+  const next = contents + (contents && !contents.endsWith('\n') ? '\n' : '') + '/MEMORY.md\n';
+  const temp = `${file}.${randomUUID()}.tmp`;
+  await writeFile(temp, next, { flag: 'wx' });
+  try { await rename(temp, file); }
+  catch (error) { await rm(temp, { force: true }); throw error; }
+}
+
 export async function loadManifest(project) {
   const file = manifestPath(project);
   let manifest;
@@ -21,6 +37,7 @@ export async function loadManifest(project) {
   if (!validateSchema(manifest)) {
     throw new Error(`Manifiesto inválido: ${validateSchema.errors.map(e => `${e.instancePath || '/'} ${e.message}`).join('; ')}`);
   }
+  if (manifest.timeZone) { try { new Intl.DateTimeFormat('en', { timeZone: manifest.timeZone }); } catch { throw new Error(`Zona horaria inválida: ${manifest.timeZone}`); } }
   if (manifest.memory?.namespace && manifest.memory.namespace !== manifest.projectId && !manifest.memory.legacyNamespaces?.includes(manifest.projectId)) {
     throw new Error('memory.namespace debe coincidir con projectId o declarar la migración en legacyNamespaces');
   }
@@ -69,6 +86,7 @@ export function resolveConfig(manifest, { execution = {}, classification } = {})
     sources.roles[role] = source;
   }
   config.memory = manifest.memory || null;
+  config.memoryPolicy = defaults.memoryPolicy;
   config.projectId = manifest.projectId;
   config.harnessVersion = manifest.harnessVersion;
   config.modelRouting.rules = defaults.modelRouting.rules;
@@ -97,6 +115,7 @@ export async function initProject(project) {
   await mkdir(path.dirname(file), { recursive: true });
   try { await writeFile(ignoreFile, '.local/\n', { flag: 'wx' }); }
   catch (error) { if (error.code !== 'EEXIST') throw error; }
+  await ensureMemoryIgnored(project);
   await writeFile(file, JSON.stringify(manifest, null, 2) + '\n', { flag: 'wx' });
   return file;
 }

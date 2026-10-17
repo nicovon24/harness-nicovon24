@@ -8,6 +8,7 @@
     "schemaVersion": { "const": 1 },
     "projectId": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,62}$" },
     "harnessVersion": { "type": "string", "minLength": 1 },
+    "timeZone": { "type": "string", "minLength": 1 },
     "execution": {
       "type": "object", "additionalProperties": false,
       "properties": {

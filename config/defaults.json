@@ -12,6 +12,7 @@
   "spec": { "policy": "proportional" },
   "review": { "independence": "risk-based" },
   "workflows": { "provider": "builtin" },
+  "memoryPolicy": { "maxActiveDays": 5, "maxLines": 150, "maxBytes": 8192, "maxPointsPerDay": 5, "expireOnInactivity": false, "defaultTimeZone": "America/Argentina/Buenos_Aires" },
   "roles": {
     "coordinator": { "profile": "astra", "effort": "medium" },
     "researcher": { "profile": "luna", "effort": "high" },
