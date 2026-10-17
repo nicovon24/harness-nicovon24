@@ -3,3 +3,4 @@ node_modules/
 harness/.local/
 *.log
 /MEMORY.md
+.env

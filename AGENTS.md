@@ -1,6 +1,6 @@
 # Contexto para trabajar en este repositorio
 
-Antes de actuar, consultá docs/PLAN.md y las secciones pertinentes de README-BASE.md. Cargá la cache una sola vez al retomar mediante `node bin/harness.mjs memory-render --project .`; no abras MEMORY.md por separado ni la importes también desde una memoria nativa.
+Antes de actuar, consultá docs/PLAN.md y las secciones pertinentes de PRODUCT.md. Cargá la cache una sola vez al retomar mediante `node bin/harness.mjs memory-render --project .`; no abras MEMORY.md por separado ni la importes también desde una memoria nativa.
 
 - docs/PLAN.md conserva decisiones y pendientes duraderos; MEMORY.md es una cache local con hasta 5 días activos distintos y no vence por inactividad.
 - El compositor del harness cuenta la memoria local y remota como un único bloque de hasta 150 líneas y 8192 bytes UTF-8. No agregues resultados remotos al contexto por fuera del compositor.

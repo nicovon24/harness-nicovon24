@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "projectId": "harness-nicovon24",
+  "harnessVersion": "0.1.0-alpha.3",
+  "references": {
+    "instructions": "AGENTS.md",
+    "roadmap": "docs/PLAN.md",
+    "commands": "package.json"
+  }
+}
