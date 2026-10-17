@@ -15,7 +15,7 @@ No se instaló el arnés en proyectos personales, no se hizo push ni publicació
 - `npm test` pasó cuatro pruebas tras la última edición: configuración y overrides, instalación en dos proyectos, CLI copiada, conservación de cambios, bloqueo cooperativo y evento durable de checkpoint.
 - `npm run check` pasó tras la última edición. `npm audit --json` reportó cero vulnerabilidades.
 - La ubicación `.agents/skills/` se contrastó con [documentación oficial de OpenAI](https://developers.openai.com/blog/skills-agents-sdk). Un primer piloto Codex leyó siete skills en disco; un segundo invocó `h-doctor` y leyó su guía. El runtime anidado bloqueó los comandos Node; al ejecutarlos directamente, `validate` devolvió `valid: true` y `doctor` `installation: files-match`.
-- Git sigue sin commits iniciales; los archivos del proyecto están sin versionar. No hubo push.
+- Commit local inicial `02aa315` (`feat: add local harness core and Codex project installer`). No hubo push.
 
 ## Decisiones vigentes
 
@@ -29,4 +29,4 @@ No se instaló el arnés en proyectos personales, no se hizo push ni publicació
 1. Completar el piloto de transferencia automática y revisión independiente entre modelos en un proyecto temporal; registrar datos de runtime y recuperación desde otra sesión.
 2. Completar snapshots de código/aceptación e invalidación de revisión; verificar límites y ownership con agentes vivos.
 3. Integrar Supermemory con envío/confirmación de la cola durable y recuperación reales; luego Superpowers en revisión fijada. No declarar v0.1 completa antes de la aceptación del plan.
-4. Crear commits locales por resultado revisado. No hacer push sin pedido explícito.
+4. Crear nuevos commits locales por los siguientes resultados revisados. No hacer push sin pedido explícito.
